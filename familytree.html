@@ -738,9 +738,9 @@
 
   <!-- CANVAS -->
   <div id="canvas-wrap"
-    onmousedown="canvasMouseDown(event)"
-    onmousemove="canvasMouseMove(event)"
-    onmouseup="canvasMouseUp(event)"
+    onmousedown="if(!window.touchActive)canvasMouseDown(event)"
+    onmousemove="if(!window.touchActive)canvasMouseMove(event)"
+    onmouseup="if(!window.touchActive)canvasMouseUp(event)"
     onwheel="canvasWheel(event)"
     oncontextmenu="showCtxMenu(event)">
 
@@ -1631,6 +1631,7 @@ function toast(msg) {
 // ═══════════════════════════════════════════
 // KEYBOARD
 // ── Mobile helpers ───────────────────────────────────────────────────────────
+let touchActive = false;
 function toggleMobPanel() {
   document.getElementById('sidebar').classList.toggle('mob-open');
 }
@@ -1654,7 +1655,7 @@ function initTouch() {
   });
 
   wrap.addEventListener('touchstart', e => {
-    e.preventDefault(); // stop synthetic mouse events from also firing
+    touchActive = true;
     if (e.touches.length === 1) {
       const t = e.touches[0];
       const el = document.elementFromPoint(t.clientX, t.clientY);
@@ -1672,7 +1673,7 @@ function initTouch() {
       pinchDist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
       tp = null;
     }
-  }, { passive: false });
+  }, { passive: true });
 
   wrap.addEventListener('touchmove', e => {
     if (e.touches.length === 1 && tp) {
