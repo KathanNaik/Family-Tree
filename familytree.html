@@ -738,9 +738,9 @@
 
   <!-- CANVAS -->
   <div id="canvas-wrap"
-    onmousedown="if(!window.touchActive)canvasMouseDown(event)"
-    onmousemove="if(!window.touchActive)canvasMouseMove(event)"
-    onmouseup="if(!window.touchActive)canvasMouseUp(event)"
+    onmousedown="canvasMouseDown(event)"
+    onmousemove="canvasMouseMove(event)"
+    onmouseup="canvasMouseUp(event)"
     onwheel="canvasWheel(event)"
     oncontextmenu="showCtxMenu(event)">
 
@@ -1633,7 +1633,1714 @@ function toast(msg) {
 // ═══════════════════════════════════════════
 // KEYBOARD
 // ── Mobile helpers ───────────────────────────────────────────────────────────
-let touchActive = false;
+function toggleMobPanel() {
+  document.getElementById('sidebar').classList.toggle('mob-open');
+}
+function openMobPanel() {
+  if (window.innerWidth <= 768)
+    document.getElementById('sidebar').classList.add('mob-open');
+}
+function closeMobPanel() {
+  if (window.innerWidth <= 768)
+    document.getElementById('sidebar').classList.remove('mob-open');
+}
+
+function initTouch() {
+  const wrap = document.getElementById('canvas-wrap');
+  let tp = null, pinchDist = null;
+
+  document.getElementById('sidebar-tabs').addEventListener('click', () => {
+    if (window.innerWidth <= 768)
+      document.getElementById('sidebar').classList.toggle('mob-open');
+  });
+
+  // passive:false + preventDefault blocks synthetic mouse events that conflict with touch
+  wrap.addEventListener('touchstart', e => {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      const hit = document.elementFromPoint(t.clientX, t.clientY);
+      const nodeEl = hit && hit.closest('.tree-node');
+      const nodeId = nodeEl ? nodeEl.dataset.id : null;
+      tp = { x0:t.clientX, y0:t.clientY, x:t.clientX, y:t.clientY,
+             moved:false, nodeId, canDrag: !!nodeId && nodeId === selectedId };
+    } else if (e.touches.length === 2) {
+      const [a,b] = e.touches;
+      pinchDist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+      tp = null;
+    }
+  }, { passive: false });
+
+  wrap.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (e.touches.length === 1 && tp) {
+      const t = e.touches[0], dx = t.clientX-tp.x, dy = t.clientY-tp.y;
+      if (!tp.moved && Math.hypot(t.clientX-tp.x0, t.clientY-tp.y0) > 8) tp.moved = true;
+      if (tp.moved) {
+        if (tp.canDrag && nodes[tp.nodeId]) {
+          nodes[tp.nodeId].x = Math.max(0, nodes[tp.nodeId].x + dx/zoom);
+          nodes[tp.nodeId].y = Math.max(0, nodes[tp.nodeId].y + dy/zoom);
+          renderAll(); markDirty();
+        } else { panX += dx; panY += dy; applyTransform(); }
+        tp.x = t.clientX; tp.y = t.clientY;
+      }
+    } else if (e.touches.length === 2 && pinchDist) {
+      const [a,b] = e.touches;
+      const dist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+      const nz = Math.min(3, Math.max(0.15, zoom * dist/pinchDist));
+      const r = wrap.getBoundingClientRect();
+      const mx = (a.clientX+b.clientX)/2-r.left, my = (a.clientY+b.clientY)/2-r.top;
+      panX = mx-(mx-panX)*(nz/zoom); panY = my-(my-panY)*(nz/zoom);
+      zoom = nz; applyTransform(); pinchDist = dist;
+    }
+  }, { passive: false });
+
+  wrap.addEventListener('touchend', e => {
+    if (tp && !tp.moved) {
+      const hit = document.elementFromPoint(tp.x0, tp.y0);
+      const nodeEl = hit && hit.closest('.tree-node');
+      const nodeId = nodeEl ? nodeEl.dataset.id : null;
+      if (connectMode && nodeId) finishConnect(nodeId);
+      else if (nodeId) selectNode(nodeId);
+      else clearSelection();
+    }
+    tp = null; pinchDist = null;
+  }, { passive: true });
+}DOCTYPE html>
+<html lang="gu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>કુટુંબ વૃક્ષ <> Family Tree Editor</title>
+<!-- seed data loaded via fetch in init() -->
+<script src="sanscript.js"></script>
+<style>
+  :root {
+    --bg: #1a1814;
+    --surface: #242018;
+    --panel: #2e2a22;
+    --border: #3d3830;
+    --accent: #c8960c;
+    --accent2: #e8b84b;
+    --text: #f0ead8;
+    --text2: #9e9580;
+    --text3: #5e5a52;
+    --danger: #c0392b;
+    --success: #27ae60;
+    --node-default: #2e2a22;
+    --node-border: #ffb300;
+    --connector: #4a4438;
+    --selected: #e8b84b;
+    --font-main: 'Georgia', serif;
+    --font-ui: 'Trebuchet MS', sans-serif;
+    --radius: 8px;
+    --panel-w: 300px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    height: 100vh;
+    height: 100dvh;          /* mobile: excludes browser chrome */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    overscroll-behavior: none; /* prevent pull-to-refresh */
+  }
+
+  /* ── TOP BAR ── */
+  #topbar {
+    height: 52px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    flex-shrink: 0;
+    z-index: 100;
+  }
+  #topbar h1 {
+    font-family: var(--font-main);
+    font-size: 18px;
+    color: var(--accent2);
+    letter-spacing: 0.5px;
+    margin-right: auto;
+  }
+  .tb-btn {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .tb-btn:hover { border-color: var(--accent); color: var(--accent2); }
+  .tb-btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #1a1814;
+    font-weight: bold;
+  }
+  .tb-btn.primary:hover { background: var(--accent2); }
+  .tb-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+  .tb-btn.save-btn  { border-color: var(--success); color: var(--success); }
+  .tb-btn.save-btn:hover  { background: var(--success); color: #fff; }
+  .tb-btn.reset-btn { border-color: var(--text3); color: var(--text3); }
+  .tb-btn.reset-btn:hover { border-color: var(--danger); color: var(--danger); }
+  .tb-btn.save-btn.dirty::before {
+    content: '';
+    display: inline-block;
+    width: 6px; height: 6px;
+    background: var(--accent2);
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+  }
+
+  #zoom-info {
+    font-size: 12px;
+    color: var(--text3);
+    min-width: 44px;
+    text-align: center;
+  }
+
+  /* ── LAYOUT ── */
+  #layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── SIDEBAR ── */
+  #sidebar {
+    width: var(--panel-w);
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  #sidebar-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+  }
+  .stab {
+    flex: 1;
+    padding: 10px;
+    font-size: 12px;
+    text-align: center;
+    cursor: pointer;
+    color: var(--text2);
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .stab.active {
+    color: var(--accent2);
+    border-bottom-color: var(--accent);
+    background: rgba(200,150,12,0.06);
+  }
+  .stab-content { display: none; flex: 1; overflow-y: auto; padding: 14px; }
+  .stab-content.active { display: block; }
+
+  /* Sidebar scrollbar */
+  .stab-content::-webkit-scrollbar { width: 4px; }
+  .stab-content::-webkit-scrollbar-track { background: transparent; }
+  .stab-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .field-group { margin-bottom: 16px; }
+  .field-label {
+    font-size: 11px;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 6px;
+    display: block;
+  }
+  .field-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+    transition: border-color 0.15s;
+    outline: none;
+  }
+  .field-input:focus { border-color: var(--accent); }
+
+  select.field-input {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239e9580' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+  }
+
+  /* ── GENDER TOGGLE (sidebar) ── */
+  .gender-toggle { display: flex; gap: 6px; }
+  .gtog {
+    flex: 1;
+    padding: 9px 4px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text2);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+  }
+  .gtog:hover { border-color: var(--accent); color: var(--accent2); }
+  .gtog.sel-n { border-color: var(--text3);  color: var(--text3);  background: rgba(94,90,82,0.12); }
+  .gtog.sel-m { border-color: #29b6f6;       color: #29b6f6;       background: rgba(41,182,246,0.12); }
+  .gtog.sel-f { border-color: #ff4081;       color: #ff4081;       background: rgba(255,64,129,0.12); }
+
+  /* ── GENDER STRIP (inside node) ── */
+
+  .color-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .color-swatch {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 5px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .color-swatch:hover { transform: scale(1.12); }
+  .color-swatch.active { border-color: white; }
+
+  .sidebar-btn {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    padding: 9px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+    margin-bottom: 8px;
+  }
+  .sidebar-btn:hover { border-color: var(--accent); color: var(--accent2); }
+  .sidebar-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+  .sidebar-btn.success {
+    border-color: var(--success);
+    color: var(--success);
+  }
+  .sidebar-btn.success:hover { background: var(--success); color: #fff; }
+
+  #no-selection {
+    color: var(--text3);
+    font-size: 13px;
+    text-align: center;
+    padding: 40px 0;
+    line-height: 1.8;
+  }
+
+  /* Relationship badge in edit panel */
+  #rel-list {
+    margin-top: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .rel-badge {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    cursor: pointer;
+    transition: border-color 0.12s;
+  }
+  .rel-badge:hover { border-color: var(--accent); color: var(--accent2); }
+
+  /* Node list */
+  .node-list-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.1s;
+    border: 1px solid transparent;
+  }
+  .node-list-item:hover { background: var(--bg); }
+  .node-list-item.selected { background: var(--bg); border-color: var(--accent); }
+  .node-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .node-list-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .node-list-gen { font-size: 11px; color: var(--text3); }
+
+  /* Search box */
+  #search-box {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    padding: 7px 10px;
+    border-radius: var(--radius);
+    outline: none;
+    margin-bottom: 10px;
+    transition: border-color 0.15s;
+  }
+  #search-box:focus { border-color: var(--accent); }
+  #search-box::placeholder { color: var(--text3); }
+
+  /* Stats bar */
+  #stats-bar {
+    font-size: 11px;
+    color: var(--text3);
+    margin-bottom: 10px;
+    padding: 0 2px;
+  }
+
+  /* ── CANVAS ── */
+  #canvas-wrap {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    background:
+      radial-gradient(circle at 20% 80%, rgba(200,150,12,0.04) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(200,150,12,0.03) 0%, transparent 50%),
+      var(--bg);
+    cursor: grab;
+  }
+  #canvas-wrap.grabbing { cursor: grabbing; }
+  #canvas-wrap.connecting { cursor: crosshair; }
+
+  #canvas {
+    position: absolute;
+    top: 0; left: 0;
+    transform-origin: 0 0;
+  }
+
+  svg#tree-svg {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  /* ── NODES ── */
+  .tree-node {
+    position: absolute;
+    min-width: 120px;
+    max-width: 180px;
+    border: 1.5px solid var(--node-border);
+    border-radius: var(--radius);
+    background: var(--node-default);
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+    transition: box-shadow 0.15s, border-color 0.15s, border-radius 0.2s;
+    z-index: 10;
+  }
+  .tree-node:hover {
+    box-shadow: 0 0 0 2px rgba(200,150,12,0.3);
+  }
+  .tree-node.selected {
+    border-color: var(--selected);
+    box-shadow: 0 0 0 3px rgba(232,184,75,0.25);
+    z-index: 20;
+  }
+  .tree-node.connecting-source {
+    border-color: #27ae60;
+    box-shadow: 0 0 0 3px rgba(39,174,96,0.3);
+  }
+  .node-inner {
+    padding: 8px 12px;
+  }
+  .node-name {
+    font-family: var(--font-main);
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.3;
+    text-align: center;
+    word-break: break-word;
+  }
+  .node-sub {
+    font-size: 10px;
+    color: var(--text2);
+    text-align: center;
+    margin-top: 2px;
+  }
+  .node-gen-badge {
+    font-size: 9px;
+    color: var(--text3);
+    text-align: center;
+    padding-bottom: 4px;
+    letter-spacing: 0.5px;
+  }
+  .node-handle {
+    position: absolute;
+    width: 10px; height: 10px;
+    background: var(--accent);
+    border-radius: 50%;
+    border: 2px solid var(--bg);
+    cursor: crosshair;
+    z-index: 30;
+    transition: transform 0.15s, background 0.15s;
+    display: none;
+  }
+  .tree-node.selected .node-handle { display: block; }
+  .node-handle:hover { transform: scale(1.4); background: var(--accent2); }
+  .node-handle.bottom { bottom: -6px; left: 50%; transform: translateX(-50%); }
+  .node-handle.top    { top: -6px;    left: 50%; transform: translateX(-50%); }
+  .node-handle.bottom:hover { transform: translateX(-50%) scale(1.4); }
+  .node-handle.top:hover    { transform: translateX(-50%) scale(1.4); }
+
+  /* ── SVG EDGES ── */
+  .edge-line {
+    stroke: var(--connector);
+    stroke-width: 1.5;
+    fill: none;
+    pointer-events: stroke;
+    cursor: pointer;
+    transition: stroke 0.15s;
+  }
+  .edge-line:hover { stroke: var(--accent); }
+  .edge-line.selected { stroke: var(--selected); stroke-width: 2.5; }
+  .edge-hit {
+    stroke: transparent;
+    stroke-width: 12;
+    fill: none;
+    cursor: pointer;
+    pointer-events: stroke;
+  }
+
+  /* Spouse edge */
+  .spouse-line {
+    stroke: #ff4081;
+    stroke-width: 1.5;
+    stroke-dasharray: 6 3;
+    fill: none;
+    pointer-events: stroke;
+    cursor: pointer;
+    transition: stroke 0.15s, stroke-width 0.15s;
+  }
+  .spouse-line:hover { stroke: #ff80ab; stroke-width: 2; }
+  .spouse-line.selected { stroke: var(--selected); stroke-width: 2.5; stroke-dasharray: none; }
+  .spouse-heart {
+    font-size: 13px;
+    fill: #ff4081;
+    pointer-events: none;
+    user-select: none;
+    dominant-baseline: middle;
+    text-anchor: middle;
+    filter: drop-shadow(0 0 4px rgba(255,64,129,0.6));
+  }
+  .spouse-heart.selected { fill: var(--selected); }
+
+  /* ── CONTEXT MENU ── */
+  #ctx-menu {
+    position: fixed;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px 0;
+    min-width: 170px;
+    z-index: 9999;
+    display: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  }
+  .ctx-item {
+    padding: 8px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--text);
+    transition: background 0.1s;
+  }
+  .ctx-item:hover { background: var(--bg); color: var(--accent2); }
+  .ctx-item.danger:hover { color: var(--danger); }
+  .ctx-sep { height: 1px; background: var(--border); margin: 4px 0; }
+
+  /* ── CONNECT MODE BAR ── */
+  #connect-bar {
+    display: none;
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    border-radius: 24px;
+    padding: 10px 20px;
+    font-size: 13px;
+    color: var(--accent2);
+    z-index: 9999;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    gap: 12px;
+    align-items: center;
+  }
+  #connect-bar.active { display: flex; }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    opacity: 0;
+    transition: all 0.25s;
+    pointer-events: none;
+    z-index: 99999;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ── INSTRUCTIONS (inside sidebar) ── */
+  #instructions {
+    margin-top: 20px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    font-size: 11px;
+    color: var(--text2);
+    line-height: 2;
+  }
+  #instructions kbd {
+    background: var(--border);
+    color: var(--text);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 10px;
+  }
+
+
+  /* ─── MOBILE ──────────────────────────────────────────── */
+  .tb-show-mob { display: none !important; }
+  #mob-fab     { display: none !important; }
+  #mob-actions { display: none !important; }
+
+  @media (max-width: 768px) {
+    .tb-hide-mob { display: none !important; }
+    .tb-show-mob { display: inline-block !important; }
+
+    /* Topbar */
+    #topbar { padding: 0 10px; gap: 8px; height: 48px; }
+    #topbar h1 { font-size: 14px; letter-spacing: 0; }
+
+    /* Canvas fills full screen minus topbar; sidebar is fixed (out of flow) */
+    #canvas-wrap {
+      position: fixed;
+      top: 48px; left: 0; right: 0;
+      bottom: 48px;          /* leave 48px for the always-visible tab strip */
+      width: 100%;
+      height: auto;
+    }
+
+    /* Sidebar → bottom sheet */
+    #sidebar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      width: 100%;
+      height: 50dvh;
+      min-height: 260px;
+      border-right: none;
+      border-top: 2px solid var(--accent);
+      border-radius: 14px 14px 0 0;
+      transform: translateY(calc(100% - 48px));
+      transition: transform .3s cubic-bezier(.4,0,.2,1);
+      z-index: 200;
+    }
+    #sidebar.mob-open { transform: translateY(0); }
+
+    /* Pull-handle pill */
+    #sidebar-tabs::before {
+      content: '';
+      display: block;
+      position: absolute;
+      top: 6px; left: 50%;
+      transform: translateX(-50%);
+      width: 36px; height: 4px;
+      border-radius: 2px;
+      background: var(--border);
+    }
+    #mob-actions { display: flex !important; flex-direction: column; padding: 10px; border-top: 1px solid var(--border); flex-shrink: 0; }
+    #sidebar-tabs { position: relative; height: 48px; cursor: pointer; border-radius: 14px 14px 0 0; }
+    .stab { padding: 15px 8px; font-size: 13px; }
+    .stab-content { height: calc(50dvh - 48px); min-height: 232px; overflow-y: auto; }
+
+    /* Bigger touch targets */
+    .field-input { font-size: 16px !important; padding: 11px 12px; }
+    .sidebar-btn { padding: 13px; font-size: 14px; margin-bottom: 10px; }
+    .gtog        { padding: 13px 4px; font-size: 14px; }
+
+    /* FAB */
+    #mob-fab {
+      display: flex !important;
+      align-items: center; justify-content: center;
+      position: fixed;
+      right: 16px;
+      bottom: calc(48px + 16px);
+      width: 54px; height: 54px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #1a1814;
+      font-size: 30px; font-weight: bold;
+      box-shadow: 0 4px 16px rgba(0,0,0,.55);
+      cursor: pointer;
+      z-index: 190;
+      border: none;
+      transition: transform .12s;
+    }
+    #mob-fab:active { transform: scale(.9); }
+  }
+</style>
+<script>window.SEED_DATA={"nodes":[{"id":"N1","name":"મોનભાઈ","sub":"","gen":0,"x":505,"y":40,"color":0},{"id":"N2","name":"નાથુભાઈ","sub":"","gen":1,"x":505,"y":180,"color":0},{"id":"N3","name":"ગોવિંદભાઈ","sub":"","gen":2,"x":240,"y":320,"color":1},{"id":"N4","name":"મકનજી","sub":"","gen":3,"x":140,"y":460,"color":1},{"id":"N5","name":"અંબાલાલ","sub":"","gen":3,"x":320,"y":460,"color":1},{"id":"N6","name":"રણછોડભાઈ","sub":"","gen":2,"x":770,"y":320,"color":2},{"id":"N7","name":"મગનલાલ","sub":"","gen":3,"x":520,"y":460,"color":2},{"id":"N8","name":"કાનજીભાઈ","sub":"","gen":3,"x":780,"y":460,"color":3},{"id":"N9","name":"ચુનીલાલ","sub":"","gen":3,"x":1040,"y":460,"color":4},{"id":"N10","name":"હરિલાલ","sub":"","gen":4,"x":420,"y":600,"color":2},{"id":"N11","name":"સોમાભાઈ","sub":"","gen":4,"x":600,"y":600,"color":2},{"id":"N12","name":"રમણલાલ","sub":"","gen":4,"x":780,"y":600,"color":3},{"id":"N13","name":"દિલીપ","sub":"","gen":4,"x":960,"y":600,"color":4},{"id":"N14","name":"હસમુખ","sub":"","gen":4,"x":1120,"y":600,"color":4},{"id":"N15","name":"મનસુખલાલ","sub":"","gen":5,"x":340,"y":740,"color":2},{"id":"N16","name":"મુકેશ","sub":"","gen":5,"x":500,"y":740,"color":2}],"edges":[["N1","N2"],["N2","N3"],["N2","N6"],["N3","N4"],["N3","N5"],["N6","N7"],["N6","N8"],["N6","N9"],["N7","N10"],["N7","N11"],["N8","N12"],["N9","N13"],["N9","N14"],["N10","N15"],["N10","N16"]]};</script>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <h1>કુટુંબ વૃક્ષ</h1>
+  <button class="tb-btn primary"                  onclick="addNode()">+ Add</button>
+  <button class="tb-btn tb-hide-mob"               onclick="autoLayout()">⊞ Layout</button>
+  <button class="tb-btn tb-hide-mob"               onclick="zoomIn()">+</button>
+  <span   id="zoom-info" class="tb-hide-mob">100%</span>
+  <button class="tb-btn tb-hide-mob"               onclick="zoomOut()">−</button>
+  <button class="tb-btn tb-hide-mob"               onclick="zoomFit()">Fit</button>
+  <button class="tb-btn tb-hide-mob"               onclick="exportPNG()">↓ PNG</button>
+  <button class="tb-btn tb-hide-mob"               onclick="exportJSON()">↓ Export</button>
+  <button class="tb-btn tb-hide-mob"               onclick="importJSON()">↑ Import</button>
+  <button class="tb-btn save-btn"    id="save-btn" onclick="saveFile()">&#9642; Save</button>
+  <button class="tb-btn reset-btn tb-hide-mob"     onclick="resetToSource()">↺ Reset</button>
+  <button class="tb-btn tb-show-mob"               onclick="toggleMobPanel()" title="Menu">☰</button>
+</div>
+
+<!-- MAIN LAYOUT -->
+<div id="layout">
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div id="sidebar-tabs">
+      <div class="stab active" onclick="switchTab('edit')">Edit</div>
+      <div class="stab" onclick="switchTab('nodes')">All Nodes</div>
+    </div>
+
+    <!-- EDIT TAB -->
+    <div class="stab-content active" id="tab-edit">
+      <div id="no-selection">
+        <p style="color:var(--text3);font-size:13px;text-align:center;line-height:1.8">
+          Click a node to<br>edit its details
+        </p>
+        <div id="instructions">
+          <b style="color:var(--accent2);font-size:12px">Controls</b><br>
+          Drag canvas &nbsp;→&nbsp; pan<br>
+          Scroll &nbsp;→&nbsp; zoom in / out<br>
+          Click node &nbsp;→&nbsp; select &amp; edit<br>
+          Drag node &nbsp;→&nbsp; reposition<br>
+          <kbd>Del</kbd> &nbsp;delete selected<br>
+          <kbd>Esc</kbd> &nbsp;cancel / deselect<br>
+          <kbd>F</kbd> &nbsp;fit all nodes<br>
+          <kbd>L</kbd> &nbsp;auto layout<br>
+          Right-click &nbsp;→&nbsp; context menu
+        </div>
+      </div>
+      <div id="edit-panel" style="display:none">
+        <div class="field-group">
+          <label class="field-label" style="display:flex;align-items:center;justify-content:space-between">
+            Name
+            <button id="trans-btn" onclick="toggleTrans()" title="Type English phonetics → Gujarati (ITRANS: aa=આ, bh=ભ, sh=શ, ii=ઈ)" style="font-size:11px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:var(--panel);color:var(--text2);cursor:pointer;letter-spacing:.5px">En→Gu</button>
+          </label>
+          <input class="field-input" id="edit-name" type="text" placeholder="e.g. ઉગ્રભાઈ"
+            oninput="if(!transMode)updateSelected()"
+            onkeydown="handleTransKey('edit-name',event)">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Sub-label / Notes</label>
+          <input class="field-input" id="edit-sub" type="text" placeholder="e.g. (કુંવારા)"
+            oninput="if(!transMode)updateSelected()"
+            onkeydown="handleTransKey('edit-sub',event)">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Generation</label>
+          <input class="field-input" id="edit-gen" type="number" min="0" max="30" placeholder="0" oninput="updateSelected()">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Gender</label>
+          <div class="gender-toggle">
+            <button class="gtog" id="gtog-n" onclick="setGender('')">— None</button>
+            <button class="gtog" id="gtog-m" onclick="setGender('m')">♂ Male</button>
+            <button class="gtog" id="gtog-f" onclick="setGender('f')">♀ Female</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Node Color</label>
+          <div class="color-row" id="color-swatches"></div>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Connected to</label>
+          <div id="rel-list"></div>
+        </div>
+        <div style="height:1px;background:var(--border);margin:4px 0 16px"></div>
+        <button class="sidebar-btn success" onclick="startConnect()">⤷ Connect to another node</button>
+        <button class="sidebar-btn" onclick="addChildOf()">+ Add child of selected</button>
+        <button class="sidebar-btn" onclick="addSpouseOf()">♥ Add spouse of selected</button>
+        <div style="height:1px;background:var(--border);margin:8px 0"></div>
+        <button class="sidebar-btn danger" onclick="deleteSelected()">✕ Delete node</button>
+      </div>
+    </div>
+
+    <!-- NODES TAB -->
+    <div class="stab-content" id="tab-nodes">
+      <input id="search-box" type="text" placeholder="Search names…" oninput="renderNodeList()">
+      <div id="stats-bar"></div>
+      <div id="node-list"></div>
+    </div>
+
+    <!-- Mobile actions -->
+    <div id="mob-actions">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button class="sidebar-btn" style="margin:0" onclick="autoLayout()">⊞ Layout</button>
+        <button class="sidebar-btn" style="margin:0" onclick="zoomFit()">⤢ Fit</button>
+        <button class="sidebar-btn" style="margin:0" onclick="exportJSON()">↓ Export</button>
+        <button class="sidebar-btn" style="margin:0" onclick="importJSON()">↑ Import</button>
+        <button class="sidebar-btn" style="margin:0" onclick="exportPNG()">↓ PNG</button>
+        <button class="sidebar-btn" style="margin:0;color:var(--danger)" onclick="resetToSource()">↺ Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CANVAS -->
+  <div id="canvas-wrap"
+    onmousedown="canvasMouseDown(event)"
+    onmousemove="canvasMouseMove(event)"
+    onmouseup="canvasMouseUp(event)"
+    onwheel="canvasWheel(event)"
+    oncontextmenu="showCtxMenu(event)">
+
+    <div id="canvas">
+      <svg id="tree-svg" width="5000" height="4000"></svg>
+    </div>
+
+  </div>
+</div>
+
+<!-- MOBILE FAB -->
+<button id="mob-fab" onclick="addNode()" title="Add person">+</button>
+
+<!-- CONTEXT MENU -->
+<div id="ctx-menu">
+  <div class="ctx-item" onclick="ctxAddNode()">+ Add person here</div>
+  <div class="ctx-item" onclick="ctxAddChild()">+ Add child</div>
+  <div class="ctx-item" onclick="ctxAddSpouse()">♥ Add spouse</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="ctxConnect()">⤷ Connect to…</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" onclick="ctxDelete()">✕ Delete</div>
+</div>
+
+<!-- CONNECT BAR -->
+<div id="connect-bar">
+  <span>Now click another node to connect</span>
+  <button class="tb-btn" onclick="cancelConnect()">Cancel</button>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- HIDDEN FILE INPUT -->
+<input type="file" id="file-import" accept=".json" style="display:none" onchange="handleImport(event)">
+
+<script>
+// ═══════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════
+let nodes = {};
+let edges = [];
+let selectedId   = null;
+let selectedEdge = null;
+let connectMode  = false;
+let connectSource = null;
+let ctxTargetId  = null;
+
+// Pan/zoom
+let panX = 40, panY = 40;
+let zoom = 1;
+
+// Drag
+let dragging   = false;
+let dragNodeId = null;
+let dragOffX   = 0, dragOffY = 0;
+let panStart   = null;
+
+// Canvas mouse pos (for context-menu placement)
+let lastCanvasX = 200, lastCanvasY = 200;
+
+const COLORS = [
+  { fill: '#2a1f0a', border: '#ffb300', label: 'Amber'   },  // 0 warm amber
+  { fill: '#082b14', border: '#00e676', label: 'Emerald' },  // 1 emerald green
+  { fill: '#081828', border: '#29b6f6', label: 'Sky'     },  // 2 sky blue
+  { fill: '#18082e', border: '#ce93d8', label: 'Violet'  },  // 3 soft violet
+  { fill: '#2b1000', border: '#ff6d00', label: 'Orange'  },  // 4 vivid orange
+  { fill: '#2b0808', border: '#ef5350', label: 'Red'     },  // 5 strong red
+  { fill: '#00191c', border: '#00e5ff', label: 'Cyan'    },  // 6 bright cyan
+  { fill: '#141d00', border: '#c6ff00', label: 'Lime'    },  // 7 electric lime
+  { fill: '#0e0e26', border: '#7c83e8', label: 'Indigo'  },  // 8 indigo
+  { fill: '#28001a', border: '#ff4081', label: 'Rose'    },  // 9 hot rose
+];
+
+let nodeColorMap = {};   // nodeId -> colorIndex
+let nodeCounter  = 1000;
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+const LS_KEY = 'familyTreeData';
+
+async function init() {
+  buildColorSwatches();
+  try {
+    const res = await fetch('family_tree_data.json');
+    if (!res.ok) throw new Error(res.status);
+    loadData(await res.json());
+  } catch {
+    // fetch fails on file:// — use inline seed bundled in the HTML
+    if (window.SEED_DATA) loadData(window.SEED_DATA);
+  }
+  renderAll();
+  renderNodeList();
+  setTimeout(() => { zoomFit(); renderAll(); }, 120);
+  initTouch();
+}
+
+function buildColorSwatches() {
+  const row = document.getElementById('color-swatches');
+  COLORS.forEach((c, i) => {
+    const sw = document.createElement('div');
+    sw.className = 'color-swatch';
+    sw.title = c.label;
+    sw.style.background = c.fill;
+    sw.style.border = `2px solid ${c.border}`;
+    sw.onclick = () => setNodeColor(i);
+    row.appendChild(sw);
+  });
+}
+
+function loadData(data) {
+  nodes = {};
+  edges = [];
+  (data.nodes || []).forEach(n => {
+    nodes[n.id] = { ...n };
+    nodeColorMap[n.id] = n.color || 0;
+  });
+  (data.edges || []).forEach(e => edges.push([...e]));
+}
+
+// ═══════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════
+function renderAll() {
+  renderEdges();
+  renderNodes();
+}
+
+function getNodeEl(id) { return document.getElementById('node-' + id); }
+
+function getNodeSize(id) {
+  const el = getNodeEl(id);
+  return { w: el ? el.offsetWidth : 130, h: el ? el.offsetHeight : 48 };
+}
+
+function renderNodes() {
+  const canvas = document.getElementById('canvas');
+  canvas.querySelectorAll('.tree-node').forEach(el => el.remove());
+
+  Object.values(nodes).forEach(n => {
+    const col = COLORS[nodeColorMap[n.id] || 0];
+    const isSel = selectedId === n.id;
+    const el = document.createElement('div');
+    el.className = 'tree-node' + (isSel ? ' selected' : '');
+    el.id = 'node-' + n.id;
+    el.style.left = n.x + 'px';
+    el.style.top  = n.y + 'px';
+    el.style.background = col.fill;
+
+    // Gender: border color + shape + glow
+    if (n.gender === 'm') {
+      el.style.borderColor  = isSel ? '#e8b84b' : '#29b6f6';
+      el.style.borderRadius = '0px';
+      el.style.boxShadow    = isSel
+        ? '0 0 0 3px rgba(232,184,75,0.25), 0 0 10px rgba(41,182,246,0.2)'
+        : '0 0 8px rgba(41,182,246,0.15)';
+    } else if (n.gender === 'f') {
+      el.style.borderColor  = isSel ? '#e8b84b' : '#ff4081';
+      el.style.borderRadius = '16px';
+      el.style.boxShadow    = isSel
+        ? '0 0 0 3px rgba(232,184,75,0.25), 0 0 10px rgba(255,64,129,0.2)'
+        : '0 0 8px rgba(255,64,129,0.15)';
+    } else {
+      el.style.borderColor  = isSel ? '#e8b84b' : col.border;
+      el.style.borderRadius = '';
+      el.style.boxShadow    = isSel ? '0 0 0 3px rgba(232,184,75,0.25)' : '';
+    }
+
+    el.innerHTML = `
+      <div class="node-inner">
+        <div class="node-name">${n.name || '(unnamed)'}</div>
+        ${n.sub  ? `<div class="node-sub">${n.sub}</div>` : ''}
+        <div class="node-gen-badge">Gen ${n.gen || 0}</div>
+      </div>
+      <div class="node-handle top"    data-id="${n.id}" data-dir="top"></div>
+      <div class="node-handle bottom" data-id="${n.id}" data-dir="bottom"></div>
+    `;
+
+    el.onmousedown = (e) => nodeMouseDown(e, n.id);
+    el.onclick = (e) => {
+      e.stopPropagation();
+      if (connectMode) finishConnect(n.id);
+      else selectNode(n.id);
+    };
+
+    el.querySelectorAll('.node-handle').forEach(h => {
+      h.onmousedown = (e) => {
+        e.stopPropagation();
+        selectNode(n.id);
+        startConnect();
+      };
+    });
+
+    canvas.appendChild(el);
+  });
+}
+
+function renderEdges() {
+  const svg = document.getElementById('tree-svg');
+  svg.innerHTML = `<defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#4a4438"
+        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arr-sel" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#e8b84b"
+        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>`;
+
+  edges.forEach((e, i) => {
+    const [aId, bId, edgeType] = e;
+    const a = nodes[aId], b = nodes[bId];
+    if (!a || !b) return;
+
+    const isSel    = selectedEdge === i;
+    const isSpouse = edgeType === 'spouse';
+    const g        = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+    if (isSpouse) {
+      // Connect side-to-side at vertical center — left node's right → right node's left
+      const { w: aw, h: ah } = getNodeSize(aId);
+      const { w: bw, h: bh } = getNodeSize(bId);
+      let x1, y1, x2, y2;
+      if (a.x <= b.x) {
+        x1 = a.x + aw;  y1 = a.y + ah / 2;
+        x2 = b.x;       y2 = b.y + bh / 2;
+      } else {
+        x1 = b.x + bw;  y1 = b.y + bh / 2;
+        x2 = a.x;       y2 = a.y + ah / 2;
+      }
+      const midX = (x1 + x2) / 2;
+      const midY = (y1 + y2) / 2;
+      const d = `M${x1},${y1} C${midX},${y1} ${midX},${y2} ${x2},${y2}`;
+
+      const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      hit.setAttribute('d', d);
+      hit.setAttribute('class', 'edge-hit');
+      hit.onclick = (ev) => { ev.stopPropagation(); selectEdge(i); };
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      line.setAttribute('d', d);
+      line.setAttribute('class', 'spouse-line' + (isSel ? ' selected' : ''));
+      line.onclick = (ev) => { ev.stopPropagation(); selectEdge(i); };
+
+      const heart = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      heart.setAttribute('x', midX);
+      heart.setAttribute('y', midY);
+      heart.setAttribute('class', 'spouse-heart' + (isSel ? ' selected' : ''));
+      heart.textContent = '♥';
+
+      g.appendChild(line);
+      g.appendChild(hit);
+      g.appendChild(heart);
+
+    } else {
+      // Parent → child: bottom-center to top-center with bezier
+      const { w: aw, h: ah } = getNodeSize(aId);
+      const { w: bw }        = getNodeSize(bId);
+      const x1 = a.x + aw / 2, y1 = a.y + ah;
+      const x2 = b.x + bw / 2, y2 = b.y;
+      const cy = (y1 + y2) / 2;
+      const d  = `M${x1},${y1} C${x1},${cy} ${x2},${cy} ${x2},${y2}`;
+
+      const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      hit.setAttribute('d', d);
+      hit.setAttribute('class', 'edge-hit');
+      hit.onclick = (ev) => { ev.stopPropagation(); selectEdge(i); };
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      line.setAttribute('d', d);
+      line.setAttribute('class', 'edge-line' + (isSel ? ' selected' : ''));
+      line.setAttribute('marker-end', isSel ? 'url(#arr-sel)' : 'url(#arr)');
+      line.onclick = (ev) => { ev.stopPropagation(); selectEdge(i); };
+
+      g.appendChild(line);
+      g.appendChild(hit);
+    }
+
+    svg.appendChild(g);
+  });
+}
+
+// ═══════════════════════════════════════════
+// SELECTION
+// ═══════════════════════════════════════════
+function selectNode(id) {
+  selectedId   = id;
+  selectedEdge = null;
+  openMobPanel();
+  renderAll();
+  showEditPanel(id);
+  renderNodeList();
+}
+
+function selectEdge(i) {
+  selectedEdge = i;
+  selectedId   = null;
+  renderAll();
+  renderNodeList();
+  showNoSelection();
+}
+
+function clearSelection() {
+  selectedId   = null;
+  selectedEdge = null;
+  closeMobPanel();
+  renderAll();
+  showNoSelection();
+  renderNodeList();
+}
+
+// ═══════════════════════════════════════════
+// EDIT PANEL
+// ═══════════════════════════════════════════
+function showNoSelection() {
+  document.getElementById('no-selection').style.display = '';
+  document.getElementById('edit-panel').style.display   = 'none';
+}
+
+function showEditPanel(id) {
+  const n = nodes[id];
+  if (!n) return;
+  document.getElementById('no-selection').style.display = 'none';
+  document.getElementById('edit-panel').style.display   = '';
+  document.getElementById('edit-name').value = n.name || '';
+  document.getElementById('edit-sub').value  = n.sub  || '';
+  document.getElementById('edit-gen').value  = n.gen  || 0;
+  updateGenderToggle(n.gender || '');
+  updateColorSwatches(nodeColorMap[id] || 0);
+  renderRelList(id);
+  // Reset transliteration buffers for new node
+  transRaw['edit-name'] = '';
+  transRaw['edit-sub']  = '';
+}
+
+// ── Gujarati Transliteration (via Sanscript.js ITRANS scheme) ────────────
+// Quick reference: aa=આ  ii=ઈ  uu=ઊ  bh=ભ  sh=શ  kh=ખ  gh=ઘ  th=થ  dh=ધ
+//                  ph=ફ  ch=ચ  jh=ઝ  Th=ઠ  Dh=ઢ  N=ણ   T=ટ   D=ડ
+let transMode = false;
+const transRaw = { 'edit-name': '', 'edit-sub': '' };
+
+function toggleTrans() {
+  transMode = !transMode;
+  const btn = document.getElementById('trans-btn');
+  btn.style.background = transMode ? 'var(--accent)'  : 'var(--panel)';
+  btn.style.color      = transMode ? '#1a1814'        : 'var(--text2)';
+  btn.style.borderColor= transMode ? 'var(--accent)'  : 'var(--border)';
+  if (transMode) {
+    transRaw['edit-name'] = '';
+    transRaw['edit-sub']  = '';
+    document.getElementById('edit-name').focus();
+  }
+}
+
+function handleTransKey(fieldId, e) {
+  if (!transMode) return;
+  if (!window.Sanscript) return;
+  // Let through: Ctrl/Cmd shortcuts, Tab, Enter, arrow keys
+  if (e.ctrlKey || e.metaKey || e.key === 'Tab' || e.key === 'Enter') return;
+
+  e.preventDefault();
+  if (e.key === 'Backspace') {
+    transRaw[fieldId] = transRaw[fieldId].slice(0, -1);
+  } else if (e.key === 'Delete') {
+    transRaw[fieldId] = '';
+  } else if (e.key.length === 1) {
+    transRaw[fieldId] += e.key;
+  } else {
+    return;
+  }
+
+  const el = document.getElementById(fieldId);
+  el.value = transRaw[fieldId]
+    ? Sanscript.t(transRaw[fieldId], 'itrans', 'gujarati')
+    : '';
+  updateSelected();
+}
+
+function renderRelList(id) {
+  const container = document.getElementById('rel-list');
+  const connected = edges
+    .filter(e => e[0] === id || e[1] === id)
+    .map(e => (e[0] === id ? e[1] : e[0]))
+    .filter(rid => nodes[rid]);
+
+  if (!connected.length) {
+    container.innerHTML = '<span style="font-size:11px;color:var(--text3)">No connections</span>';
+    return;
+  }
+  container.innerHTML = connected.map(rid =>
+    `<span class="rel-badge" onclick="selectNode('${rid}');switchTab('edit')">${nodes[rid].name || rid}</span>`
+  ).join('');
+}
+
+function updateColorSwatches(active) {
+  document.querySelectorAll('.color-swatch').forEach((sw, i) => {
+    sw.classList.toggle('active', i === active);
+  });
+}
+
+function updateSelected() {
+  if (!selectedId) return;
+  nodes[selectedId].name = document.getElementById('edit-name').value;
+  nodes[selectedId].sub  = document.getElementById('edit-sub').value;
+  nodes[selectedId].gen  = parseInt(document.getElementById('edit-gen').value) || 0;
+  markDirty();
+  renderAll();
+  renderNodeList();
+}
+
+function setGender(v) {
+  if (!selectedId) return;
+  nodes[selectedId].gender = v;
+  updateGenderToggle(v);
+  markDirty();
+  renderAll();
+}
+
+function updateGenderToggle(v) {
+  document.getElementById('gtog-n').className = 'gtog' + (v === ''  ? ' sel-n' : '');
+  document.getElementById('gtog-m').className = 'gtog' + (v === 'm' ? ' sel-m' : '');
+  document.getElementById('gtog-f').className = 'gtog' + (v === 'f' ? ' sel-f' : '');
+}
+
+function setNodeColor(i) {
+  if (!selectedId) return;
+  nodeColorMap[selectedId] = i;
+  nodes[selectedId].color  = i;
+  updateColorSwatches(i);
+  markDirty();
+  renderAll();
+}
+
+// ═══════════════════════════════════════════
+// NODE LIST
+// ═══════════════════════════════════════════
+function renderNodeList() {
+  const list    = document.getElementById('node-list');
+  const stats   = document.getElementById('stats-bar');
+  const query   = (document.getElementById('search-box')?.value || '').toLowerCase();
+  const allNodes = Object.values(nodes);
+  const sorted  = allNodes
+    .filter(n => !query || (n.name || '').toLowerCase().includes(query) || (n.sub || '').toLowerCase().includes(query))
+    .sort((a, b) => (a.gen || 0) - (b.gen || 0) || (a.name || '').localeCompare(b.name || ''));
+
+  const gens = [...new Set(allNodes.map(n => n.gen || 0))].length;
+  stats.textContent = `${allNodes.length} people · ${edges.length} connections · ${gens} generations`;
+
+  list.innerHTML = sorted.map(n => {
+    const col = COLORS[nodeColorMap[n.id] || 0];
+    return `<div class="node-list-item ${selectedId === n.id ? 'selected' : ''}"
+        onclick="selectNode('${n.id}');switchTab('edit')">
+      <div class="node-dot" style="background:${col.border}"></div>
+      <div class="node-list-name">${n.name || '(unnamed)'}</div>
+      <div class="node-list-gen">Gen ${n.gen || 0}</div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════
+// ADD / DELETE NODES
+// ═══════════════════════════════════════════
+function addNode(x, y, parentId, relType) {
+  const id  = 'N' + (nodeCounter++);
+  const px  = (x !== undefined) ? x : Math.max(40, (300 - panX) / zoom);
+  const py  = (y !== undefined) ? y : Math.max(40, (200 - panY) / zoom);
+  const gen = parentId ? (nodes[parentId].gen + (relType === 'spouse' ? 0 : 1)) : 0;
+  nodes[id] = { id, name: 'New Person', sub: '', gen, x: px, y: py, color: 0, gender: '' };
+  nodeColorMap[id] = 0;
+  if (parentId && relType !== 'spouse') edges.push([parentId, id, 'child']);
+  renderAll();
+  selectNode(id);
+  renderNodeList();
+  setTimeout(() => { document.getElementById('edit-name').select(); }, 60);
+  markDirty();
+  toast('New person added');
+  return id;
+}
+
+function addChildOf() {
+  if (!selectedId) return;
+  const p = nodes[selectedId];
+  addNode(p.x + 80, p.y + 140, selectedId);
+}
+
+function addSpouseOf() {
+  if (!selectedId) return;
+  const sourceId = selectedId;          // save — addNode() changes selectedId
+  const p        = nodes[sourceId];
+  const id       = addNode(p.x + 200, p.y, sourceId, 'spouse');
+  // Auto-assign opposite gender
+  if      (p.gender === 'm') nodes[id].gender = 'f';
+  else if (p.gender === 'f') nodes[id].gender = 'm';
+  edges.push([sourceId, id, 'spouse']); // typed spouse edge
+  markDirty();
+  renderAll();
+}
+
+function deleteSelected() {
+  if (selectedId) {
+    delete nodes[selectedId];
+    delete nodeColorMap[selectedId];
+    edges = edges.filter(e => e[0] !== selectedId && e[1] !== selectedId);
+    selectedId = null;
+    renderAll();
+    showNoSelection();
+    renderNodeList();
+    markDirty();
+    toast('Deleted');
+  } else if (selectedEdge !== null) {
+    edges.splice(selectedEdge, 1);
+    selectedEdge = null;
+    markDirty();
+    renderAll();
+    toast('Connection removed');
+  }
+}
+
+// ═══════════════════════════════════════════
+// CONNECT MODE
+// ═══════════════════════════════════════════
+function startConnect() {
+  if (!selectedId) { toast('Select a node first'); return; }
+  connectMode   = true;
+  connectSource = selectedId;
+  document.getElementById('canvas-wrap').classList.add('connecting');
+  document.getElementById('connect-bar').classList.add('active');
+  toast('Click the target node to connect');
+}
+
+function finishConnect(targetId) {
+  if (!connectSource || targetId === connectSource) { cancelConnect(); return; }
+  const exists = edges.some(e => e[0] === connectSource && e[1] === targetId);
+  if (!exists) {
+    edges.push([connectSource, targetId]);
+    markDirty();
+    toast('Connected!');
+  } else {
+    toast('Already connected');
+  }
+  cancelConnect();
+  renderAll();
+}
+
+function cancelConnect() {
+  connectMode   = false;
+  connectSource = null;
+  document.getElementById('canvas-wrap').classList.remove('connecting');
+  document.getElementById('connect-bar').classList.remove('active');
+}
+
+// ═══════════════════════════════════════════
+// DRAG / PAN / ZOOM
+// ═══════════════════════════════════════════
+function nodeMouseDown(e, id) {
+  if (connectMode) return;
+  e.stopPropagation();
+  if (e.button === 2) return;
+  dragging   = true;
+  dragNodeId = id;
+  selectNode(id);
+
+  const rect = document.getElementById('canvas-wrap').getBoundingClientRect();
+  dragOffX = (e.clientX - rect.left) / zoom - nodes[id].x - panX / zoom;
+  dragOffY = (e.clientY - rect.top)  / zoom - nodes[id].y - panY / zoom;
+  e.preventDefault();
+}
+
+function canvasMouseDown(e) {
+  if (e.button === 2) return;
+  if (connectMode) return;
+  panStart = { x: e.clientX - panX, y: e.clientY - panY };
+  document.getElementById('canvas-wrap').classList.add('grabbing');
+  clearSelection();
+}
+
+function canvasMouseMove(e) {
+  const wrap = document.getElementById('canvas-wrap');
+  const rect = wrap.getBoundingClientRect();
+
+  if (dragging && dragNodeId) {
+    const nx = (e.clientX - rect.left) / zoom - panX / zoom - dragOffX;
+    const ny = (e.clientY - rect.top)  / zoom - panY / zoom - dragOffY;
+    nodes[dragNodeId].x = Math.max(0, nx);
+    nodes[dragNodeId].y = Math.max(0, ny);
+    const el = getNodeEl(dragNodeId);
+    if (el) { el.style.left = nodes[dragNodeId].x + 'px'; el.style.top = nodes[dragNodeId].y + 'px'; }
+    renderEdges();
+    return;
+  }
+  if (panStart) {
+    panX = e.clientX - panStart.x;
+    panY = e.clientY - panStart.y;
+    applyTransform();
+  }
+  lastCanvasX = (e.clientX - rect.left - panX) / zoom;
+  lastCanvasY = (e.clientY - rect.top  - panY) / zoom;
+}
+
+function canvasMouseUp() {
+  if (dragging && dragNodeId) markDirty();
+  dragging   = false;
+  dragNodeId = null;
+  panStart   = null;
+  document.getElementById('canvas-wrap').classList.remove('grabbing');
+}
+
+function canvasWheel(e) {
+  e.preventDefault();
+  const wrap  = document.getElementById('canvas-wrap');
+  const rect  = wrap.getBoundingClientRect();
+  const mx    = e.clientX - rect.left;
+  const my    = e.clientY - rect.top;
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const nz    = Math.min(3, Math.max(0.15, zoom * delta));
+  panX  = mx - (mx - panX) * (nz / zoom);
+  panY  = my - (my - panY) * (nz / zoom);
+  zoom  = nz;
+  applyTransform();
+}
+
+function applyTransform() {
+  document.getElementById('canvas').style.transform =
+    `translate(${panX}px,${panY}px) scale(${zoom})`;
+  document.getElementById('zoom-info').textContent = Math.round(zoom * 100) + '%';
+}
+
+function zoomIn()  { zoom = Math.min(3,    zoom * 1.2); applyTransform(); }
+function zoomOut() { zoom = Math.max(0.15, zoom / 1.2); applyTransform(); }
+
+function zoomFit() {
+  const ns = Object.values(nodes);
+  if (!ns.length) return;
+  const wrap = document.getElementById('canvas-wrap');
+  const ww = wrap.clientWidth - 80, wh = wrap.clientHeight - 80;
+  const xs = ns.map(n => n.x), ys = ns.map(n => n.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs) + 160;
+  const minY = Math.min(...ys), maxY = Math.max(...ys) + 60;
+  zoom = Math.min(ww / (maxX - minX), wh / (maxY - minY), 2);
+  panX = 40 - minX * zoom;
+  panY = 40 - minY * zoom;
+  applyTransform();
+}
+
+// ═══════════════════════════════════════════
+// AUTO LAYOUT
+// ═══════════════════════════════════════════
+function autoLayout() {
+  const roots    = Object.keys(nodes).filter(id => !edges.some(e => e[1] === id));
+  const children = {};
+  const genMap   = {};
+  Object.keys(nodes).forEach(id => { children[id] = []; genMap[id] = -1; });
+  edges.forEach(([a, b]) => { if (children[a]) children[a].push(b); });
+
+  const queue = [...roots];
+  roots.forEach(r => { genMap[r] = 0; });
+  while (queue.length) {
+    const cur = queue.shift();
+    children[cur].forEach(ch => {
+      if (genMap[ch] < genMap[cur] + 1) {
+        genMap[ch] = genMap[cur] + 1;
+        queue.push(ch);
+      }
+    });
+  }
+
+  const byGen = {};
+  Object.keys(nodes).forEach(id => {
+    const g = genMap[id] >= 0 ? genMap[id] : (nodes[id].gen || 0);
+    if (!byGen[g]) byGen[g] = [];
+    byGen[g].push(id);
+  });
+
+  const GY = 140, GX = 170;
+  Object.entries(byGen).forEach(([g, ids]) => {
+    const offset = -(ids.length - 1) * GX / 2;
+    ids.forEach((id, i) => {
+      nodes[id].x = 200 + offset + i * GX;
+      nodes[id].y = 40  + parseInt(g) * GY;
+    });
+  });
+
+  renderAll();
+  zoomFit();
+  toast('Layout applied');
+}
+
+// ═══════════════════════════════════════════
+// CONTEXT MENU
+// ═══════════════════════════════════════════
+function showCtxMenu(e) {
+  e.preventDefault();
+  ctxTargetId = selectedId;
+  const menu = document.getElementById('ctx-menu');
+  menu.style.display = 'block';
+  menu.style.left    = e.clientX + 'px';
+  menu.style.top     = e.clientY + 'px';
+  document.addEventListener('click', hideCtxMenu, { once: true });
+}
+function hideCtxMenu() { document.getElementById('ctx-menu').style.display = 'none'; }
+function ctxAddNode()  { addNode(lastCanvasX, lastCanvasY); }
+function ctxAddChild() { ctxTargetId ? addChildOf() : addNode(lastCanvasX, lastCanvasY); }
+function ctxAddSpouse(){ ctxTargetId ? addSpouseOf() : toast('Select a node first'); }
+function ctxConnect()  { startConnect(); }
+function ctxDelete()   { deleteSelected(); }
+
+// ═══════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════
+function switchTab(t) {
+  const tabs = ['edit', 'nodes'];
+  document.querySelectorAll('.stab').forEach((el, i) =>
+    el.classList.toggle('active', tabs[i] === t));
+  document.querySelectorAll('.stab-content').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + t).classList.add('active');
+}
+
+// ═══════════════════════════════════════════
+// EXPORT / IMPORT
+// ═══════════════════════════════════════════
+// ── Shared file content builder ──────────────────────────────────────────
+function buildFileContent() {
+  return JSON.stringify({ nodes: Object.values(nodes), edges }, null, 2);
+}
+
+// ── Dirty-state tracking ─────────────────────────────────────────────────
+let isDirty = false;
+
+function markDirty() {
+  // Auto-backup every change to localStorage (survives refresh)
+  localStorage.setItem(LS_KEY, JSON.stringify({ nodes: Object.values(nodes), edges }));
+  if (!isDirty) {
+    isDirty = true;
+    document.getElementById('save-btn').classList.add('dirty');
+  }
+}
+
+function markClean() {
+  isDirty = false;
+  document.getElementById('save-btn').classList.remove('dirty');
+}
+
+// ── Save → localStorage ───────────────────────────────────────────────────
+function saveFile() {
+  localStorage.setItem(LS_KEY, JSON.stringify({ nodes: Object.values(nodes), edges }));
+  markClean();
+  toast('Saved to browser storage');
+}
+
+// ── Reset → reload from family_tree_data.json ────────────────────────────
+async function resetToSource() {
+  if (!confirm('Reset to source file? All unsaved changes will be lost.')) return;
+  localStorage.removeItem(LS_KEY);
+  try {
+    const res = await fetch('family_tree_data.json');
+    if (!res.ok) throw new Error(res.status);
+    loadData(await res.json());
+  } catch {
+    if (window.SEED_DATA) loadData(window.SEED_DATA);
+    else { nodes = {}; edges = []; }
+  }
+  markClean();
+  renderAll();
+  renderNodeList();
+  zoomFit();
+  toast('Reset to source');
+}
+
+// ── Export (always downloads, regardless of save handle) ─────────────────
+function exportJSON() {
+  const blob = new Blob([buildFileContent()], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = 'family_tree_data.json';
+  a.click();
+  toast('Exported family_tree_data.json');
+}
+
+function importJSON() { document.getElementById('file-import').click(); }
+
+function handleImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      loadData(JSON.parse(ev.target.result));
+      localStorage.setItem(LS_KEY, JSON.stringify({ nodes: Object.values(nodes), edges }));
+      markClean();
+      renderAll();
+      renderNodeList();
+      zoomFit();
+      toast('Imported successfully');
+    } catch { toast('Invalid file — expected family_tree_data.js format'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+function exportPNG() {
+  toast('Preparing PNG…');
+  const ns = Object.values(nodes);
+  if (!ns.length) return;
+  const pad = 60;
+  const minX = Math.min(...ns.map(n => n.x)) - pad;
+  const minY = Math.min(...ns.map(n => n.y)) - pad;
+  const maxX = Math.max(...ns.map(n => n.x + 170)) + pad;
+  const maxY = Math.max(...ns.map(n => n.y + 60))  + pad;
+  const W = maxX - minX, H = maxY - minY;
+
+  const cv  = document.createElement('canvas');
+  cv.width  = W * 2; cv.height = H * 2;
+  const ctx = cv.getContext('2d');
+  ctx.scale(2, 2);
+  ctx.fillStyle = '#1a1814';
+  ctx.fillRect(0, 0, W, H);
+
+  // Edges
+  ctx.strokeStyle = '#4a4438';
+  ctx.lineWidth   = 1.5;
+  edges.forEach(([aId, bId]) => {
+    const a = nodes[aId], b = nodes[bId];
+    if (!a || !b) return;
+    const { w: aw, h: ah } = getNodeSize(aId);
+    const { w: bw }        = getNodeSize(bId);
+    const x1 = a.x + aw/2 - minX, y1 = a.y + ah - minY;
+    const x2 = b.x + bw/2 - minX, y2 = b.y     - minY;
+    const cy = (y1 + y2) / 2;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.bezierCurveTo(x1, cy, x2, cy, x2, y2);
+    ctx.stroke();
+  });
+
+  // Nodes
+  ns.forEach(n => {
+    const col = COLORS[nodeColorMap[n.id] || 0];
+    const { w: nw, h: nh } = getNodeSize(n.id);
+    const x = n.x - minX, y = n.y - minY;
+    ctx.fillStyle   = col.fill;
+    ctx.strokeStyle = col.border;
+    ctx.lineWidth   = 1.5;
+    roundRect(ctx, x, y, nw, nh, 8);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle    = '#f0ead8';
+    ctx.font         = '13px Georgia,serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(n.name || '', x + nw/2, y + nh/2 - (n.sub ? 8 : 0));
+    if (n.sub) {
+      ctx.fillStyle = '#9e9580';
+      ctx.font      = '10px Trebuchet MS,sans-serif';
+      ctx.fillText(n.sub, x + nw/2, y + nh/2 + 8);
+    }
+  });
+
+  const a   = document.createElement('a');
+  a.download = 'family_tree.png';
+  a.href     = cv.toDataURL('image/png');
+  a.click();
+  toast('PNG downloaded');
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w-r, y + h, r);
+  ctx.lineTo(x + r, y + h); ctx.arcTo(x,     y + h, x,     y + h - r, r);
+  ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+// ═══════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// ═══════════════════════════════════════════
+// KEYBOARD
+// ── Mobile helpers ───────────────────────────────────────────────────────────
 function toggleMobPanel() {
   document.getElementById('sidebar').classList.toggle('mob-open');
 }
