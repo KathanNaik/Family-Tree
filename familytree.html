@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>કુટુંબ વૃક્ષ <> Family Tree Editor</title>
 <!-- seed data loaded via fetch in init() -->
+<script src="https://cdn.jsdelivr.net/npm/@indic-transliteration/sanscript@2/sanscript.js"></script>
 <style>
   :root {
     --bg: #1a1814;
@@ -586,12 +587,19 @@
       </div>
       <div id="edit-panel" style="display:none">
         <div class="field-group">
-          <label class="field-label">Name (Gujarati / English)</label>
-          <input class="field-input" id="edit-name" type="text" placeholder="e.g. ઉગ્રભાઈ" oninput="updateSelected()">
+          <label class="field-label" style="display:flex;align-items:center;justify-content:space-between">
+            Name
+            <button id="trans-btn" onclick="toggleTrans()" title="Type English phonetics → Gujarati (ITRANS: aa=આ, bh=ભ, sh=શ, ii=ઈ)" style="font-size:11px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:var(--panel);color:var(--text2);cursor:pointer;letter-spacing:.5px">En→gu</button>
+          </label>
+          <input class="field-input" id="edit-name" type="text" placeholder="e.g. ઉગ્રભાઈ"
+            oninput="if(!transMode)updateSelected()"
+            onkeydown="handleTransKey('edit-name',event)">
         </div>
         <div class="field-group">
           <label class="field-label">Sub-label / Notes</label>
-          <input class="field-input" id="edit-sub" type="text" placeholder="e.g. (કુંવારા)" oninput="updateSelected()">
+          <input class="field-input" id="edit-sub" type="text" placeholder="e.g. (કુંવારા)"
+            oninput="if(!transMode)updateSelected()"
+            onkeydown="handleTransKey('edit-sub',event)">
         </div>
         <div class="field-group">
           <label class="field-label">Generation</label>
@@ -963,6 +971,52 @@ function showEditPanel(id) {
   updateGenderToggle(n.gender || '');
   updateColorSwatches(nodeColorMap[id] || 0);
   renderRelList(id);
+  // Reset transliteration buffers for new node
+  transRaw['edit-name'] = '';
+  transRaw['edit-sub']  = '';
+}
+
+// ── Gujarati Transliteration (via Sanscript.js ITRANS scheme) ────────────
+// Quick reference: aa=આ  ii=ઈ  uu=ઊ  bh=ભ  sh=શ  kh=ખ  gh=ઘ  th=થ  dh=ધ
+//                  ph=ફ  ch=ચ  jh=ઝ  Th=ઠ  Dh=ઢ  N=ણ   T=ટ   D=ડ
+let transMode = false;
+const transRaw = { 'edit-name': '', 'edit-sub': '' };
+
+function toggleTrans() {
+  transMode = !transMode;
+  const btn = document.getElementById('trans-btn');
+  btn.style.background = transMode ? 'var(--accent)'  : 'var(--panel)';
+  btn.style.color      = transMode ? '#1a1814'        : 'var(--text2)';
+  btn.style.borderColor= transMode ? 'var(--accent)'  : 'var(--border)';
+  if (transMode) {
+    transRaw['edit-name'] = '';
+    transRaw['edit-sub']  = '';
+    document.getElementById('edit-name').focus();
+  }
+}
+
+function handleTransKey(fieldId, e) {
+  if (!transMode) return;
+  if (!window.Sanscript) return;
+  // Let through: Ctrl/Cmd shortcuts, Tab, Enter, arrow keys
+  if (e.ctrlKey || e.metaKey || e.key === 'Tab' || e.key === 'Enter') return;
+
+  e.preventDefault();
+  if (e.key === 'Backspace') {
+    transRaw[fieldId] = transRaw[fieldId].slice(0, -1);
+  } else if (e.key === 'Delete') {
+    transRaw[fieldId] = '';
+  } else if (e.key.length === 1) {
+    transRaw[fieldId] += e.key;
+  } else {
+    return;
+  }
+
+  const el = document.getElementById(fieldId);
+  el.value = transRaw[fieldId]
+    ? Sanscript.t(transRaw[fieldId], 'itrans', 'gujarati')
+    : '';
+  updateSelected();
 }
 
 function renderRelList(id) {
