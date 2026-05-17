@@ -1033,6 +1033,7 @@ function renderEdges() {
 function selectNode(id) {
   selectedId   = id;
   selectedEdge = null;
+  openMobPanel();
   renderAll();
   showEditPanel(id);
   renderNodeList();
@@ -1049,6 +1050,7 @@ function selectEdge(i) {
 function clearSelection() {
   selectedId   = null;
   selectedEdge = null;
+  closeMobPanel();
   renderAll();
   showNoSelection();
   renderNodeList();
