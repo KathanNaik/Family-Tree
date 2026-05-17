@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>કુટુંબ વૃક્ષ <> Family Tree Editor</title>
 <!-- seed data loaded via fetch in init() -->
-<script src="https://cdn.jsdelivr.net/npm/@indic-transliteration/sanscript@2/sanscript.js"></script>
+<script src="sanscript.js"></script>
 <style>
   :root {
     --bg: #1a1814;
@@ -590,7 +590,7 @@
         <div class="field-group">
           <label class="field-label" style="display:flex;align-items:center;justify-content:space-between">
             Name
-            <button id="trans-btn" onclick="toggleTrans()" title="Type English phonetics → Gujarati (ITRANS: aa=આ, bh=ભ, sh=શ, ii=ઈ)" style="font-size:11px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:var(--panel);color:var(--text2);cursor:pointer;letter-spacing:.5px">En→gu</button>
+            <button id="trans-btn" onclick="toggleTrans()" title="Type English phonetics → Gujarati (ITRANS: aa=આ, bh=ભ, sh=શ, ii=ઈ)" style="font-size:11px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:var(--panel);color:var(--text2);cursor:pointer;letter-spacing:.5px">En→Gu</button>
           </label>
           <input class="field-input" id="edit-name" type="text" placeholder="e.g. ઉગ્રભાઈ"
             oninput="if(!transMode)updateSelected()"
