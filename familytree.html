@@ -31,14 +31,18 @@
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
+  html { height: 100%; }
+
   body {
     background: var(--bg);
     color: var(--text);
     font-family: var(--font-ui);
     height: 100vh;
+    height: 100dvh;          /* mobile: excludes browser chrome */
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    overscroll-behavior: none; /* prevent pull-to-refresh */
   }
 
   /* ── TOP BAR ── */
@@ -539,20 +543,31 @@
 
   /* ─── MOBILE ──────────────────────────────────────────── */
   .tb-show-mob { display: none !important; }
+  #mob-fab     { display: none !important; }
 
   @media (max-width: 768px) {
     .tb-hide-mob { display: none !important; }
     .tb-show-mob { display: inline-block !important; }
 
+    /* Topbar */
     #topbar { padding: 0 10px; gap: 8px; height: 48px; }
     #topbar h1 { font-size: 14px; letter-spacing: 0; }
 
-    /* Sidebar becomes a bottom sheet */
+    /* Canvas fills full screen minus topbar; sidebar is fixed (out of flow) */
+    #canvas-wrap {
+      position: fixed;
+      top: 48px; left: 0; right: 0;
+      bottom: 48px;          /* leave 48px for the always-visible tab strip */
+      width: 100%;
+      height: auto;
+    }
+
+    /* Sidebar → bottom sheet */
     #sidebar {
       position: fixed;
       bottom: 0; left: 0; right: 0;
       width: 100%;
-      height: 62vh;
+      height: 62dvh;
       min-height: 280px;
       border-right: none;
       border-top: 2px solid var(--accent);
@@ -563,7 +578,7 @@
     }
     #sidebar.mob-open { transform: translateY(0); }
 
-    /* Pull-handle hint */
+    /* Pull-handle pill */
     #sidebar-tabs::before {
       content: '';
       display: block;
@@ -576,21 +591,17 @@
     }
     #sidebar-tabs { position: relative; height: 48px; cursor: pointer; border-radius: 14px 14px 0 0; }
     .stab { padding: 15px 8px; font-size: 13px; }
-    .stab-content { height: calc(62vh - 48px); min-height: 232px; }
+    .stab-content { height: calc(62dvh - 48px); min-height: 232px; overflow-y: auto; }
 
-    /* Canvas: leave room for tab strip at bottom */
-    #canvas-wrap { padding-bottom: 48px; }
-
-    /* Bigger touch targets for inputs & buttons */
-    .field-input  { font-size: 16px !important; padding: 11px 12px; }
-    .sidebar-btn  { padding: 13px; font-size: 14px; margin-bottom: 10px; }
-    .gtog         { padding: 13px 4px; font-size: 14px; }
+    /* Bigger touch targets */
+    .field-input { font-size: 16px !important; padding: 11px 12px; }
+    .sidebar-btn { padding: 13px; font-size: 14px; margin-bottom: 10px; }
+    .gtog        { padding: 13px 4px; font-size: 14px; }
 
     /* FAB */
     #mob-fab {
       display: flex !important;
-      align-items: center;
-      justify-content: center;
+      align-items: center; justify-content: center;
       position: fixed;
       right: 16px;
       bottom: calc(48px + 16px);
@@ -598,8 +609,7 @@
       border-radius: 50%;
       background: var(--accent);
       color: #1a1814;
-      font-size: 30px;
-      font-weight: bold;
+      font-size: 30px; font-weight: bold;
       box-shadow: 0 4px 16px rgba(0,0,0,.55);
       cursor: pointer;
       z-index: 190;
@@ -607,10 +617,6 @@
       transition: transform .12s;
     }
     #mob-fab:active { transform: scale(.9); }
-  }
-
-  @media (min-width: 769px) {
-    #mob-fab { display: none !important; }
   }
 </style>
 <script>window.SEED_DATA={ "nodes": [ { "id": "N1", "name": "અસ્પષ્ટ મૂળ પૂર્વજ", "sub": "", "x": 640, "y": 40, "gen": 0, "color": 0 }, { "id": "N2", "name": "ગોવિંદભાઈ", "sub": "", "x": 300, "y": 160, "gen": 1, "color": 1 }, { "id": "N3", "name": "મકનજી", "sub": "", "x": 160, "y": 290, "gen": 2, "color": 1 }, { "id": "N4", "name": "અંબાલાલ", "sub": "", "x": 420, "y": 290, "gen": 2, "color": 1 }, { "id": "N5", "name": "રવજીભાઈ / રણછોડભાઈ", "sub": "", "x": 980, "y": 160, "gen": 1, "color": 2 }, { "id": "N6", "name": "મગનલાલ", "sub": "", "x": 720, "y": 290, "gen": 2, "color": 2 }, { "id": "N7", "name": "કાનજીભાઈ", "sub": "", "x": 980, "y": 290, "gen": 2, "color": 3 }, { "id": "N8", "name": "ચુનીલાલ", "sub": "", "x": 1240, "y": 290, "gen": 2, "color": 4 }, { "id": "N9", "name": "હરિલાલ", "sub": "", "x": 620, "y": 420, "gen": 3, "color": 2 }, { "id": "N10", "name": "સોમાભાઈ", "sub": "", "x": 820, "y": 420, "gen": 3, "color": 2 }, { "id": "N11", "name": "રમણલાલ", "sub": "", "x": 980, "y": 420, "gen": 3, "color": 3 }, { "id": "N12", "name": "દિલીપ", "sub": "", "x": 1140, "y": 420, "gen": 3, "color": 4 }, { "id": "N13", "name": "હસમુખ", "sub": "", "x": 1340, "y": 420, "gen": 3, "color": 4 }, { "id": "N14", "name": "મનસુખલાલ", "sub": "", "x": 540, "y": 550, "gen": 4, "color": 2 }, { "id": "N15", "name": "મુકેશ", "sub": "", "x": 700, "y": 550, "gen": 4, "color": 2 }, { "id": "N16", "name": "શાંતિલાલ", "sub": "", "x": 160, "y": 720, "gen": 0, "color": 5 }, { "id": "N17", "name": "મોહનલાલ", "sub": "", "x": 360, "y": 720, "gen": 0, "color": 5 }, { "id": "N18", "name": "જયંતિલાલ", "sub": "", "x": 560, "y": 720, "gen": 0, "color": 5 }, { "id": "N19", "name": "રસિકલાલ", "sub": "", "x": 760, "y": 720, "gen": 0, "color": 5 }, { "id": "N20", "name": "પ્રવિણ", "sub": "", "x": 960, "y": 720, "gen": 0, "color": 5 }, { "id": "N21", "name": "મહેન્દ્ર", "sub": "", "x": 1160, "y": 720, "gen": 0, "color": 5 }, { "id": "N22", "name": "નટવર", "sub": "", "x": 160, "y": 840, "gen": 0, "color": 6 }, { "id": "N23", "name": "ભીખાભાઈ", "sub": "", "x": 360, "y": 840, "gen": 0, "color": 6 }, { "id": "N24", "name": "ગિરીશ", "sub": "", "x": 560, "y": 840, "gen": 0, "color": 6 }, { "id": "N25", "name": "કિરીટ", "sub": "", "x": 760, "y": 840, "gen": 0, "color": 6 }, { "id": "N26", "name": "દીપક", "sub": "", "x": 960, "y": 840, "gen": 0, "color": 6 } ], "edges": [ [ "N1", "N2" ], [ "N1", "N5" ], [ "N2", "N3" ], [ "N2", "N4" ], [ "N5", "N6" ], [ "N5", "N7" ], [ "N5", "N8" ], [ "N6", "N9" ], [ "N6", "N10" ], [ "N7", "N11" ], [ "N8", "N12" ], [ "N8", "N13" ], [ "N9", "N14" ], [ "N9", "N15" ] ] };</script>
