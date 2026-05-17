@@ -1675,7 +1675,7 @@ function initTouch() {
       pinchDist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
       tp = null;
     }
-  }, { passive: true });
+  }, { passive: false });
 
   wrap.addEventListener('touchmove', e => {
     if (e.touches.length === 1 && tp) {
