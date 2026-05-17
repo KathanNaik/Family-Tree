@@ -1646,66 +1646,59 @@ function closeMobPanel() {
     document.getElementById('sidebar').classList.remove('mob-open');
 }
 
-function initTouch() {
-  const wrap = document.getElementById('canvas-wrap');
-  let tp = null, pinchDist = null;
+function initTouch(){
+  const wrap=document.getElementById('canvas-wrap');
+  let tp=null,pinchDist=null;
 
-  document.getElementById('sidebar-tabs').addEventListener('click', () => {
-    if (window.innerWidth <= 768)
-      document.getElementById('sidebar').classList.toggle('mob-open');
+  document.getElementById('sidebar-tabs').addEventListener('click',()=>{
+    if(window.innerWidth<=768)document.getElementById('sidebar').classList.toggle('mob-open');
   });
 
-  wrap.addEventListener('touchstart', e => {
+  wrap.addEventListener('touchstart',e=>{
     e.preventDefault();
-    if (e.touches.length === 1) {
-      const t = e.touches[0];
-      const hit = document.elementFromPoint(t.clientX, t.clientY);
-      const nEl = hit && hit.closest('.tree-node');
-      const nId = nEl ? nEl.dataset.id : null;
-      tp = { x0:t.clientX, y0:t.clientY, x:t.clientX, y:t.clientY,
-             moved:false, nodeId:nId, canDrag:!!nId && nId === selectedId };
-    } else if (e.touches.length === 2) {
-      const [a,b] = e.touches;
-      pinchDist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
-      tp = null;
+    if(e.touches.length===1){
+      const t=e.touches[0];
+      const nEl=t.target.closest('.tree-node');
+      const nId=nEl?nEl.dataset.id:null;
+      tp={x0:t.clientX,y0:t.clientY,x:t.clientX,y:t.clientY,moved:false,nodeId:nId,canDrag:!!nId&&nId===selectedId};
+    }else if(e.touches.length===2){
+      const[a,b]=e.touches;
+      pinchDist=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+      tp=null;
     }
-  }, { passive:false });
+  },{passive:false});
 
-  wrap.addEventListener('touchmove', e => {
+  wrap.addEventListener('touchmove',e=>{
     e.preventDefault();
-    if (e.touches.length === 1 && tp) {
-      const t = e.touches[0], dx = t.clientX-tp.x, dy = t.clientY-tp.y;
-      if (!tp.moved && Math.hypot(t.clientX-tp.x0, t.clientY-tp.y0) > 8) tp.moved = true;
-      if (tp.moved) {
-        if (tp.canDrag && nodes[tp.nodeId]) {
-          nodes[tp.nodeId].x = Math.max(0, nodes[tp.nodeId].x + dx/zoom);
-          nodes[tp.nodeId].y = Math.max(0, nodes[tp.nodeId].y + dy/zoom);
-          renderAll(); markDirty();
-        } else { panX += dx; panY += dy; applyTransform(); }
-        tp.x = t.clientX; tp.y = t.clientY;
+    if(e.touches.length===1&&tp){
+      const t=e.touches[0],dx=t.clientX-tp.x,dy=t.clientY-tp.y;
+      if(!tp.moved&&Math.hypot(t.clientX-tp.x0,t.clientY-tp.y0)>8)tp.moved=true;
+      if(tp.moved){
+        if(tp.canDrag&&nodes[tp.nodeId]){
+          nodes[tp.nodeId].x=Math.max(0,nodes[tp.nodeId].x+dx/zoom);
+          nodes[tp.nodeId].y=Math.max(0,nodes[tp.nodeId].y+dy/zoom);
+          renderAll();markDirty();
+        }else{panX+=dx;panY+=dy;applyTransform();}
+        tp.x=t.clientX;tp.y=t.clientY;
       }
-    } else if (e.touches.length === 2 && pinchDist) {
-      const [a,b] = e.touches;
-      const dist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
-      const nz = Math.min(3, Math.max(0.15, zoom*dist/pinchDist));
-      const r = wrap.getBoundingClientRect();
-      const mx = (a.clientX+b.clientX)/2-r.left, my = (a.clientY+b.clientY)/2-r.top;
-      panX = mx-(mx-panX)*(nz/zoom); panY = my-(my-panY)*(nz/zoom);
-      zoom = nz; applyTransform(); pinchDist = dist;
+    }else if(e.touches.length===2&&pinchDist){
+      const[a,b]=e.touches,dist=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+      const nz=Math.min(3,Math.max(0.15,zoom*dist/pinchDist));
+      const r=wrap.getBoundingClientRect();
+      const mx=(a.clientX+b.clientX)/2-r.left,my=(a.clientY+b.clientY)/2-r.top;
+      panX=mx-(mx-panX)*(nz/zoom);panY=my-(my-panY)*(nz/zoom);
+      zoom=nz;applyTransform();pinchDist=dist;
     }
-  }, { passive:false });
+  },{passive:false});
 
-  wrap.addEventListener('touchend', e => {
-    if (tp && !tp.moved) {
-      const hit = document.elementFromPoint(tp.x0, tp.y0);
-      const nEl = hit && hit.closest('.tree-node');
-      const nId = nEl ? nEl.dataset.id : null;
-      if (connectMode && nId) finishConnect(nId);
-      else if (nId) selectNode(nId);
+  wrap.addEventListener('touchend',e=>{
+    if(tp&&!tp.moved){
+      if(connectMode&&tp.nodeId)finishConnect(tp.nodeId);
+      else if(tp.nodeId)selectNode(tp.nodeId);
       else clearSelection();
     }
-    tp = null; pinchDist = null;
-  }, { passive:true });
+    tp=null;pinchDist=null;
+  },{passive:true});
 }
 
 // ═══════════════════════════════════════════
