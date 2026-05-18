@@ -1661,6 +1661,7 @@ function initTouch(){
       const nEl=t.target.closest('.tree-node');
       const nId=nEl?nEl.dataset.id:null;
       tp={x0:t.clientX,y0:t.clientY,x:t.clientX,y:t.clientY,moved:false,nodeId:nId,canDrag:!!nId&&nId===selectedId};
+      toast('start: '+(nId||'canvas')+' sel:'+selectedId);
     }else if(e.touches.length===2){
       const[a,b]=e.touches;
       pinchDist=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
@@ -1693,6 +1694,7 @@ function initTouch(){
 
   wrap.addEventListener('touchend',e=>{
     if(tp&&!tp.moved){
+      toast('end: '+(tp.nodeId||'canvas')+' moved:'+tp.moved);
       if(connectMode&&tp.nodeId)finishConnect(tp.nodeId);
       else if(tp.nodeId)selectNode(tp.nodeId);
       else clearSelection();
