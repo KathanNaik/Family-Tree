@@ -887,6 +887,7 @@ function renderNodes() {
     const el = document.createElement('div');
     el.className = 'tree-node' + (isSel ? ' selected' : '');
     el.id = 'node-' + n.id;
+    el.dataset.id = n.id;
     el.style.left = n.x + 'px';
     el.style.top  = n.y + 'px';
     el.style.background = col.fill;
@@ -1661,8 +1662,7 @@ function initTouch(){
       const nEl=t.target.closest('.tree-node');
       const nId=nEl?nEl.dataset.id:null;
       tp={x0:t.clientX,y0:t.clientY,x:t.clientX,y:t.clientY,moved:false,nodeId:nId,canDrag:!!nId&&nId===selectedId};
-      toast('nId:'+nId+' can:'+(!!nId&&nId===selectedId)+' sel:'+selectedId);
-    }else if(e.touches.length===2){
+      }else if(e.touches.length===2){
       const[a,b]=e.touches;
       pinchDist=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
       tp=null;
