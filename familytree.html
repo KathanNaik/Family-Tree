@@ -1661,7 +1661,7 @@ function initTouch(){
       const nEl=t.target.closest('.tree-node');
       const nId=nEl?nEl.dataset.id:null;
       tp={x0:t.clientX,y0:t.clientY,x:t.clientX,y:t.clientY,moved:false,nodeId:nId,canDrag:!!nId&&nId===selectedId};
-      toast('start: '+(nId||'canvas')+' sel:'+selectedId);
+      toast('tgt:'+t.target.id+'/'+t.target.className.toString().slice(0,20));
     }else if(e.touches.length===2){
       const[a,b]=e.touches;
       pinchDist=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
