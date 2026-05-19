@@ -678,12 +678,12 @@
             <button id="trans-btn" onclick="toggleTrans()" title="Type English phonetics → Gujarati (ITRANS: aa=આ, bh=ભ, sh=શ, ii=ઈ)" style="font-size:11px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:var(--panel);color:var(--text2);cursor:pointer;letter-spacing:.5px">En→Gu</button>
           </label>
           <input class="field-input" id="edit-name" type="text" placeholder="e.g. ઉગ્રભાઈ"
-            oninput="transMode?handleTransInput('edit-name',event):updateSelected()">
+            oninput="handleTransInput('edit-name',event)">
         </div>
         <div class="field-group">
           <label class="field-label">Sub-label / Notes</label>
           <input class="field-input" id="edit-sub" type="text" placeholder="e.g. (કુંવારા)"
-            oninput="transMode?handleTransInput('edit-sub',event):updateSelected()">
+            oninput="handleTransInput('edit-sub',event)">
         </div>
         <div class="field-group">
           <label class="field-label">Generation</label>
@@ -1067,6 +1067,8 @@ function showNoSelection() {
 function showEditPanel(id) {
   const n = nodes[id];
   if (!n) return;
+  transRaw['edit-name'] = '';
+  transRaw['edit-sub'] = '';
   document.getElementById('no-selection').style.display = 'none';
   document.getElementById('edit-panel').style.display   = '';
   document.getElementById('edit-name').value = n.name || '';
@@ -1100,17 +1102,14 @@ function toggleTrans() {
 }
 
 function handleTransInput(fieldId, e) {
-  if (!transMode || !window.Sanscript) return;
-  if (e.inputType === 'insertText' && e.data) {
-    transRaw[fieldId] += e.data;
-  } else if (e.inputType === 'deleteContentBackward') {
-    transRaw[fieldId] = transRaw[fieldId].slice(0, -1);
-  } else if (e.inputType === 'deleteWordBackward' || e.inputType === 'deleteContentForward') {
-    transRaw[fieldId] = '';
-  } else { return; }
+  if (!window.Sanscript) { updateSelected(); return; }
   const el = document.getElementById(fieldId);
-  el.value = transRaw[fieldId] ? Sanscript.t(transRaw[fieldId], 'itrans', 'gujarati') : '';
-  // move cursor to end
+  if (e.inputType && e.inputType.startsWith('delete')) {
+    transRaw[fieldId] = transRaw[fieldId].slice(0, -1);
+  } else if (e.data && [...e.data].every(c => c.charCodeAt(0) < 128)) {
+    transRaw[fieldId] += e.data;
+  } else { updateSelected(); return; }
+  el.value = transRaw[fieldId] ? Sanscript.t(transRaw[fieldId],'itrans','gujarati') : '';
   el.setSelectionRange(el.value.length, el.value.length);
   updateSelected();
 }
